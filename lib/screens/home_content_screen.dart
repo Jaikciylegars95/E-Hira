@@ -46,19 +46,34 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // SliverAppBar stylé avec animation Lottie
+          // SliverAppBar stylé avec logo + texte "E-Hira"
           SliverAppBar(
-            expandedHeight: 50, // hauteur réduite pour plus d'équilibre
+            expandedHeight: 160, // Hauteur suffisante pour le logo
             floating: false,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              title: const Text(
-                "E-Hira",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                  color: Colors.white,
-                ),
+              titlePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Logo à gauche
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 36, // Taille raisonnable dans l'AppBar
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(width: 10),
+                  // Texte "E-Hira" à droite
+                  const Text(
+                    "E-Hira",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
               background: Container(
                 decoration: BoxDecoration(
@@ -73,12 +88,11 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
                     width: 140,
                     height: 140,
                     child: Lottie.asset(
-                      'assets/animations/music_note.json', // ton animation ici
+                      'assets/animations/music_note.json',
                       fit: BoxFit.contain,
                       repeat: true,
                       animate: true,
                       errorBuilder: (context, error, stackTrace) {
-                        // Fallback élégant si l'animation n'est pas trouvée
                         return Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
@@ -98,7 +112,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
             ),
           ),
 
-          // Contenu principal
+          // Contenu principal (inchangé)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20),
