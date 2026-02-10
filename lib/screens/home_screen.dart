@@ -95,7 +95,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       bool hasChanges = false;
 
       for (final item in data) {
-        final p = Partition.fromJson(item, baseUrl: _serverBaseUrl); // ← CORRECTION ICI
+        final p = Partition.fromJson(item, baseUrl: _serverBaseUrl);
 
         debugPrint("Partition reçue : ${p.titre} | pdf_url: ${p.pdfUrl} | audio_url: ${p.audioUrl}");
 
@@ -183,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: Colors.grey.shade100, // ← Fond gris clair pour toute la page
       appBar: AppBar(
         title: Image.asset(
           'assets/images/logo.png',
@@ -340,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                   style: const TextStyle(
                                                     fontSize: 18,
                                                     fontWeight: FontWeight.w600,
-                                                    color: Colors.white,
+                                                    color: Colors.black87,
                                                   ),
                                                 ),
                                               ),
@@ -351,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                 child: IconButton(
                                                   icon: Icon(
                                                     p.isFavorite ? Icons.favorite : Icons.favorite_border,
-                                                    color: p.isFavorite ? Colors.redAccent : Colors.grey.shade400,
+                                                    color: p.isFavorite ? Colors.redAccent : Colors.grey.shade600,
                                                   ),
                                                   onPressed: () async {
                                                     setState(() {
@@ -377,7 +377,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                           Text(
                                             p.categorie,
                                             style: TextStyle(
-                                              color: Colors.grey.shade400,
+                                              color: Colors.grey.shade700,
                                               fontWeight: FontWeight.w400,
                                             ),
                                           ),

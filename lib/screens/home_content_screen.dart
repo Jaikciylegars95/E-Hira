@@ -48,7 +48,7 @@ class _HomeContentScreenState extends State<HomeContentScreen> {
         slivers: [
           // SliverAppBar stylé avec animation Lottie
           SliverAppBar(
-            expandedHeight: 180, // hauteur réduite pour plus d'équilibre
+            expandedHeight: 50, // hauteur réduite pour plus d'équilibre
             floating: false,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
