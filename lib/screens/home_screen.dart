@@ -12,6 +12,234 @@ import 'detail_screen.dart';
 import 'package:http/http.dart' as http;
 import '../utils/file_helper.dart';
 
+// Widget AudioPlayerControls intégré ici
+class AudioPlayerControls extends StatefulWidget {
+  final AudioPlayer player;
+  final String? audioPath;
+
+  const AudioPlayerControls({
+    super.key,
+    required this.player,
+    this.audioPath,
+  });
+
+  @override
+  State<AudioPlayerControls> createState() => _AudioPlayerControlsState();
+}
+
+class _AudioPlayerControlsState extends State<AudioPlayerControls> {
+  bool _isPlaying = false;
+  bool _isBuffering = false;
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+
+    widget.player.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+          _isBuffering = state.processingState == ProcessingState.buffering;
+        });
+      }
+    });
+
+    widget.player.positionStream.listen((pos) {
+      if (mounted) setState(() => _position = pos);
+    });
+
+    widget.player.durationStream.listen((dur) {
+      if (mounted) setState(() => _duration = dur ?? Duration.zero);
+    });
+  }
+
+  Future<void> _playOrPause() async {
+    if (widget.audioPath == null || widget.audioPath!.isEmpty) {
+      _showError("Aucun fichier audio disponible");
+      debugPrint("→ AudioPath est vide ou null");
+      return;
+    }
+
+    final file = File(widget.audioPath!);
+    if (!await file.exists()) {
+      _showError("Fichier audio introuvable sur le disque");
+      debugPrint("→ Fichier n'existe pas : ${widget.audioPath}");
+      return;
+    }
+
+    final size = await file.length();
+    debugPrint("Tentative lecture audio : ${widget.audioPath} | taille ${size} octets");
+
+    try {
+      if (_isPlaying) {
+        debugPrint("Pause demandé");
+        await widget.player.pause();
+      } else {
+        debugPrint("Play demandé – état actuel : ${widget.player.processingState}");
+        if (widget.player.processingState == ProcessingState.idle ||
+            widget.player.processingState == ProcessingState.completed) {
+          debugPrint("setFilePath en cours sur : ${widget.audioPath}");
+          await widget.player.setFilePath(widget.audioPath!);
+          debugPrint("setFilePath terminé avec succès");
+        }
+        debugPrint("Lancement play...");
+        await widget.player.play();
+        debugPrint("Play lancé avec succès");
+      }
+    } on PlayerException catch (e) {
+      debugPrint("PlayerException : code=${e.code} message=${e.message}");
+      _showError("Erreur just_audio : ${e.message ?? e.code}");
+    } catch (e, stack) {
+      debugPrint("Erreur inattendue lecture audio : $e");
+      debugPrint("Stack : $stack");
+      _showError("Erreur lecture : $e");
+    }
+  }
+
+  Future<void> _stop() async {
+    try {
+      await widget.player.stop();
+    } catch (e) {
+      _showError("Erreur stop : $e");
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.toString().padLeft(2, '0');
+    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.audioPath == null || widget.audioPath!.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text(
+          "Aucun fichier audio disponible",
+          style: TextStyle(color: Colors.grey, fontSize: 16),
+        ),
+      );
+    }
+
+    final file = File(widget.audioPath!);
+    if (!file.existsSync()) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text(
+          "Fichier audio introuvable",
+          style: TextStyle(color: Colors.red, fontSize: 16),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Text(_formatDuration(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    activeTrackColor: const Color(0xFF4F46E5),
+                    inactiveTrackColor: Colors.grey.shade300,
+                    thumbColor: const Color(0xFF4F46E5),
+                  ),
+                  child: Slider(
+                    value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
+                    max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
+                    onChanged: (value) {
+                      widget.player.seek(Duration(milliseconds: value.toInt()));
+                    },
+                  ),
+                ),
+              ),
+              Text(_formatDuration(_duration), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton.filledTonal(
+                iconSize: 32,
+                icon: const Icon(Icons.stop_rounded),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.grey.shade200,
+                  foregroundColor: Colors.grey.shade800,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                onPressed: _stop,
+              ),
+
+              const SizedBox(width: 32),
+
+              IconButton.filled(
+                iconSize: 56,
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+                  child: _isBuffering
+                      ? const SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                        )
+                      : _isPlaying
+                          ? const Icon(Icons.pause_rounded, key: ValueKey('pause'))
+                          : const Icon(Icons.play_arrow_rounded, key: ValueKey('play')),
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F46E5),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: _playOrPause,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==============================================
+// HomeScreen
+// ==============================================
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -56,6 +284,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     _initApp();
     _searchController.addListener(_onSearchChanged);
+
+    // Listener pour rafraîchir les boutons du player
+    _player.playerStateStream.listen((state) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _initApp() async {
@@ -81,69 +314,152 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _syncWithServerInBackground() async {
+    debugPrint("\n" + "═" * 80);
+    debugPrint("=== LANCEMENT SYNCHRO AUDIO/PDF - ${DateTime.now()} ===");
+    debugPrint("API URL : $_apiUrl");
+    debugPrint("Base URL : $_serverBaseUrl");
+
     try {
-      debugPrint("Tentative sync API : $_apiUrl");
-      final response = await http.get(Uri.parse(_apiUrl));
-      debugPrint("Réponse API : ${response.statusCode}");
+      debugPrint("Envoi requête HTTP GET...");
+      final uri = Uri.parse(_apiUrl);
+      debugPrint("URI parsée : $uri");
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 30));
+      debugPrint("Réponse reçue ! Status : ${response.statusCode}");
+      debugPrint("Headers : ${response.headers}");
+      debugPrint("Taille body : ${response.body.length} caractères");
 
       if (response.statusCode != 200) {
-        debugPrint("Erreur sync API : ${response.statusCode} - ${response.body}");
+        debugPrint("ERREUR API - Body (début) : ${response.body.substring(0, response.body.length.clamp(0, 300))}...");
         return;
       }
 
+      debugPrint("Décodage JSON...");
       final List data = jsonDecode(response.body);
+      debugPrint("Nombre de partitions dans l'API : ${data.length}");
+
+      if (data.isEmpty) {
+        debugPrint("!!! AUCUNE PARTITION RENVOYÉE PAR L'API !!!");
+        return;
+      }
+
       bool hasChanges = false;
 
-      for (final item in data) {
-        final p = Partition.fromJson(item, baseUrl: _serverBaseUrl);
+      for (int i = 0; i < data.length; i++) {
+        final item = data[i];
+        debugPrint("\nPartition #${i+1} / ${data.length} - ID: ${item['id'] ?? 'inconnu'}");
 
-        debugPrint("Partition reçue : ${p.titre} | pdf_url: ${p.pdfUrl} | audio_url: ${p.audioUrl}");
+        final p = Partition.fromJson(item, baseUrl: _serverBaseUrl);
+        debugPrint("  Titre          : ${p.titre}");
+        debugPrint("  Catégorie      : ${p.categorie}");
+        debugPrint("  PDF URL        : ${p.pdfUrl}");
+        debugPrint("  Audio URL      : ${p.audioUrl}");
+        debugPrint("  Version        : ${p.version}");
 
         final existing = _partitions.firstWhereOrNull((e) => e.id == p.id);
+        debugPrint("  Existe déjà ?  : ${existing != null ? 'Oui (version ${existing.version})' : 'Non'}");
 
         if (existing == null || (existing.version ?? 0) < (p.version ?? 1)) {
+          debugPrint("  → Mise à jour nécessaire");
+
+          // PDF
           if (p.pdfUrl.isNotEmpty) {
             final path = await FileHelper.getLocalFilePath("${p.titre}.pdf");
-            if (!await File(path).exists()) {
-              try {
-                final file = await FileHelper.downloadFile(p.pdfUrl, "${p.titre}.pdf");
-                p.localPdfPath = file.path;
-                debugPrint("PDF téléchargé : ${p.localPdfPath}");
-              } catch (e) {
-                debugPrint("Échec PDF ${p.titre} : $e");
+            debugPrint("PDF - chemin calculé : $path");
+
+            final file = File(path);
+
+            bool shouldDownload = true;
+
+            if (await file.exists()) {
+              final size = await file.length();
+              debugPrint("PDF - fichier existe déjà | taille : $size octets");
+              if (size > 1000) {
+                debugPrint("PDF - fichier semble valide → on garde le chemin existant");
+                p.localPdfPath = path;
+                shouldDownload = false;
+              } else {
+                debugPrint("PDF - fichier vide ou corrompu → suppression et re-téléchargement");
+                await file.delete();
               }
-            } else {
-              p.localPdfPath = path;
-              debugPrint("PDF déjà présent : $path");
             }
+
+            if (shouldDownload) {
+              debugPrint("PDF - lancement téléchargement...");
+              try {
+                final downloadedFile = await FileHelper.downloadFile(p.pdfUrl, "${p.titre}.pdf");
+                p.localPdfPath = downloadedFile.path;
+                final finalSize = await File(p.localPdfPath!).length();
+                debugPrint("PDF - téléchargement terminé | chemin : ${p.localPdfPath}");
+                debugPrint("PDF - taille finale : $finalSize octets");
+              } catch (e, stack) {
+                debugPrint("PDF - ÉCHEC TÉLÉCHARGEMENT : $e");
+                debugPrint("Stack : $stack");
+              }
+            }
+          } else {
+            debugPrint("PDF - Pas d'URL PDF dans l'API");
           }
 
+          // AUDIO
           if (p.audioUrl.isNotEmpty) {
             final path = await FileHelper.getLocalFilePath("${p.titre}.mp3");
-            if (!await File(path).exists()) {
-              try {
-                final file = await FileHelper.downloadFile(p.audioUrl, "${p.titre}.mp3");
-                p.localAudioPath = file.path;
-                debugPrint("Audio téléchargé : ${p.localAudioPath}");
-              } catch (e) {
-                debugPrint("Échec audio ${p.titre} : $e");
+            debugPrint("Audio - chemin calculé : $path");
+
+            final file = File(path);
+
+            bool shouldDownload = true;
+
+            if (await file.exists()) {
+              final size = await file.length();
+              debugPrint("Audio - fichier existe déjà | taille : $size octets");
+              if (size > 1000) {
+                debugPrint("Audio - fichier semble valide → on garde le chemin existant");
+                p.localAudioPath = path;
+                shouldDownload = false;
+              } else {
+                debugPrint("Audio - fichier vide ou corrompu → suppression et re-téléchargement");
+                await file.delete();
               }
-            } else {
-              p.localAudioPath = path;
-              debugPrint("Audio déjà présent : $path");
             }
+
+            if (shouldDownload) {
+              debugPrint("Audio - lancement téléchargement...");
+              try {
+                final downloadedFile = await FileHelper.downloadFile(p.audioUrl, "${p.titre}.mp3");
+                p.localAudioPath = downloadedFile.path;
+                final finalSize = await File(p.localAudioPath!).length();
+                debugPrint("Audio - téléchargement terminé | chemin : ${p.localAudioPath}");
+                debugPrint("Audio - taille finale : $finalSize octets");
+              } catch (e, stack) {
+                debugPrint("Audio - ÉCHEC TÉLÉCHARGEMENT : $e");
+                debugPrint("Stack : $stack");
+              }
+            }
+          } else {
+            debugPrint("Audio - Pas d'URL audio dans l'API");
           }
 
+          debugPrint("  Sauvegarde en base...");
           await DBHelper.insertOrUpdatePartition(p);
+          debugPrint("  Sauvegarde OK");
           hasChanges = true;
+        } else {
+          debugPrint("  Pas de mise à jour nécessaire (version déjà à jour)");
         }
       }
 
-      if (hasChanges && mounted) {
+      if (hasChanges) {
+        debugPrint("Des changements ont été effectués → rechargement local");
         await _loadLocalPartitions();
+      } else {
+        debugPrint("Aucun changement détecté");
       }
-    } catch (e) {
-      debugPrint("Sync background erreur : $e");
+
+      debugPrint("=== SYNCHRO TERMINÉE AVEC SUCCÈS ===");
+    } catch (e, stack) {
+      debugPrint("ERREUR GLOBALE SYNCHRO : $e");
+      debugPrint("Stack trace : $stack");
     }
   }
 
@@ -157,33 +473,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
   }
 
-  Future<void> _playAudio(String path) async {
-    try {
-      await _player.stop();
-      await _player.setFilePath(path);
-      await _player.play();
-    } on PlayerException catch (e) {
-      debugPrint("Erreur just_audio : ${e.code} - ${e.message}");
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Erreur lecture : ${e.message ?? 'inconnue'}"),
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    } catch (e) {
-      debugPrint("Erreur audio inattendue : $e");
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Impossible de lire l'audio")),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100, // ← Fond gris clair pour toute la page
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
         title: Image.asset(
           'assets/images/logo.png',
@@ -289,6 +582,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           itemCount: _filtered.length,
                           itemBuilder: (context, index) {
                             final p = _filtered[index];
+
+                            // LOGS DE DIAGNOSTIC AUDIO AJOUTÉS ICI
+                            debugPrint("Pour ${p.titre} → localAudioPath = ${p.localAudioPath ?? 'NULL'}");
+                            if (p.localAudioPath != null) {
+                              final audioFile = File(p.localAudioPath!);
+                              debugPrint("  → Existe ? ${audioFile.existsSync()}");
+                              if (audioFile.existsSync()) {
+                                debugPrint("  → Taille : ${audioFile.lengthSync()} octets");
+                              } else {
+                                debugPrint("  → Fichier audio n'existe PAS sur le disque !");
+                              }
+                            } else {
+                              debugPrint("  → localAudioPath est NULL → pas d'audio assigné");
+                            }
+
                             return FadeTransition(
                               opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
                                 CurvedAnimation(
@@ -402,18 +710,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                       : null,
                                                 ),
                                               ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: CustomButton(
-                                                  text: "Audio",
-                                                  icon: Icons.play_arrow,
-                                                  color: Colors.teal,
-                                                  onPressed: p.localAudioPath != null &&
-                                                          p.localAudioPath!.isNotEmpty
-                                                      ? () => _playAudio(p.localAudioPath!)
-                                                      : null,
-                                                ),
-                                              ),
+                                              CustomButton(
+  text: "PDF",
+  icon: Icons.picture_as_pdf,
+  color: Colors.indigo,
+  onPressed: p.localPdfPath != null && p.localPdfPath!.isNotEmpty
+      ? () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DetailScreen(partition: p),
+            ),
+          );
+        }
+      : null,
+),
                                             ],
                                           ),
                                         ],
