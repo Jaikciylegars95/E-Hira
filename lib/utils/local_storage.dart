@@ -16,11 +16,11 @@ class LocalStorage {
   static Partition? getPartition(int id) {
     var box = Hive.box(boxName);
     final data = box.get(id);
-    return data != null ? Partition.fromJson(Map<String, dynamic>.from(data)) : null;
+    return data != null ? Partition.fromJson(Map<String, dynamic>.from(data), baseUrl: '') : null;
   }
 
   static List<Partition> getAll() {
     var box = Hive.box(boxName);
-    return box.values.map((e) => Partition.fromJson(Map<String, dynamic>.from(e))).toList();
+    return box.values.map((e) => Partition.fromJson(Map<String, dynamic>.from(e), baseUrl: '')).toList();
   }
 }

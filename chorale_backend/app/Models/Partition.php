@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Partition extends Model
 {
     protected $table = 'partitions'; // facultatif si table = plural du modèle
-    protected $fillable = ['titre', 'categorie', 'pdf_url', 'audio_url', 'version'];
+    protected $fillable = ['titre', 'categorie', 'pdf_url', 'audio_url', 'version', 'is_favorite'];
 
     // Pour l'API : retourne les URLs complètes
     public function toArray()

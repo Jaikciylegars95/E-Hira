@@ -20,8 +20,8 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
   late AnimationController _controller;
   late Animation<double> _animation;
 
-  final String apiUrl = "http://192.168.88.9:8000/api/partitions";
-  final String serverBaseUrl = "http://192.168.88.9:8000/";
+  final String apiUrl = "http://192.168.88.247:8000/api/partitions";
+  final String serverBaseUrl = "http://192.168.88.247:8000/";
 
   String statusMessage = "Chargement...";
 

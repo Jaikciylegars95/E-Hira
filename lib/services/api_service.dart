@@ -4,7 +4,7 @@ import '../models/partition.dart';
 import '../utils/local_storage.dart';
 
 class ApiService {
-  static const String baseUrl = "http://192.168.88.9:8000/api";
+  static const String baseUrl = "http://192.168.88.247:8000/api";
 
   static Future<List<Partition>> syncPartitions() async {
     final localPartitions = await LocalStorage.getAll();
@@ -25,7 +25,7 @@ class ApiService {
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
       final newPartitions =
-          data.map((e) => Partition.fromJson(e)).toList();
+          data.map((e) => Partition.fromJson(e, baseUrl: '')).toList();
 
       for (var p in newPartitions) {
         await LocalStorage.savePartition(p);

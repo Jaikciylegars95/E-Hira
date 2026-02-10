@@ -1,12 +1,14 @@
+import 'package:flutter/foundation.dart'; // pour debugPrint si besoin
+
 class Partition {
   final int id;
   final String titre;
   final String categorie;
-  final String pdfUrl;
-  final String audioUrl;
+  final String pdfUrl;       // URL complète (ex: http://.../storage/pdfs/solfa1.pdf)
+  final String audioUrl;     // URL complète
   final int version;
 
-  String? localPdfPath;
+  String? localPdfPath;      // chemin local sur le téléphone
   String? localAudioPath;
 
   bool isFavorite;
@@ -23,22 +25,13 @@ class Partition {
     this.isFavorite = false,
   });
 
-  factory Partition.fromJson(Map<String, dynamic> json, {String? baseUrl}) {
-    String formatUrl(String? rawUrl) {
-      if (rawUrl == null || rawUrl.isEmpty) return '';
-      if (rawUrl.startsWith('http')) return rawUrl;
-
-      // Nettoyage du chemin (évite les doubles slashs)
-      String cleanPath = rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl;
-      return baseUrl != null ? '$baseUrl$cleanPath' : '';
-    }
-
+  factory Partition.fromJson(Map<String, dynamic> json, {required String baseUrl}) {
     return Partition(
       id: json['id'] as int? ?? 0,
       titre: json['titre'] as String? ?? '',
       categorie: json['categorie'] as String? ?? '',
-      pdfUrl: formatUrl(json['pdf_url'] as String?),
-      audioUrl: formatUrl(json['audio_url'] as String?),
+      pdfUrl: json['pdf_url'] as String? ?? '',
+      audioUrl: json['audio_url'] as String? ?? '',
       version: json['version'] as int? ?? 1,
     );
   }
@@ -59,7 +52,7 @@ class Partition {
 
   factory Partition.fromMap(Map<String, dynamic> map) {
     return Partition(
-      id: map['id'] as int,
+      id: map['id'] as int? ?? 0,
       titre: map['titre'] as String? ?? '',
       categorie: map['categorie'] as String? ?? '',
       pdfUrl: map['pdf_url'] as String? ?? '',
@@ -71,9 +64,24 @@ class Partition {
     );
   }
 
-  // Pour debug / logs
+  // Pour debug / logs clairs
   @override
   String toString() {
-    return 'Partition(id: $id, titre: $titre, categorie: $categorie, favorite: $isFavorite, pdf: $localPdfPath != null)';
+    return 'Partition(id: $id | titre: $titre | favorite: $isFavorite | '
+        'pdf_url: $pdfUrl | localPdf: $localPdfPath | '
+        'audio_url: $audioUrl | localAudio: $localAudioPath)';
+  }
+
+  // Pour envoyer au serveur si besoin (update favorite par exemple)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'titre': titre,
+      'categorie': categorie,
+      'pdf_url': pdfUrl,
+      'audio_url': audioUrl,
+      'version': version,
+      'is_favorite': isFavorite,
+    };
   }
 }
