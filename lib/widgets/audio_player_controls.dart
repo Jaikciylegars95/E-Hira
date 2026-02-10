@@ -27,8 +27,6 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
   void initState() {
     super.initState();
 
-    debugPrint("AudioPlayerControls initState | audioPath reçu : ${widget.audioPath ?? 'NULL'}");
-
     widget.player.playerStateStream.listen((state) {
       if (mounted) {
         setState(() {
@@ -49,65 +47,72 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
 
   Future<void> _playOrPause() async {
     if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      _showError("Aucun fichier audio disponible");
-      debugPrint("→ AudioPath est vide ou null");
+      _showSnack("Aucun fichier audio disponible");
       return;
     }
 
     final file = File(widget.audioPath!);
     if (!await file.exists()) {
-      _showError("Fichier audio introuvable sur le disque");
-      debugPrint("→ Fichier n'existe pas : ${widget.audioPath}");
+      _showSnack("Fichier audio introuvable");
       return;
     }
 
-    final size = await file.length();
-    debugPrint("Tentative lecture audio : ${widget.audioPath} | taille ${size} octets");
-
     try {
       if (_isPlaying) {
-        debugPrint("Pause demandé");
         await widget.player.pause();
       } else {
-        debugPrint("Play demandé – état actuel : ${widget.player.processingState}");
         if (widget.player.processingState == ProcessingState.idle ||
             widget.player.processingState == ProcessingState.completed) {
-          debugPrint("setFilePath en cours sur : ${widget.audioPath}");
           await widget.player.setFilePath(widget.audioPath!);
-          debugPrint("setFilePath terminé avec succès");
         }
-        debugPrint("Lancement play...");
         await widget.player.play();
-        debugPrint("Play lancé avec succès");
       }
-    } on PlayerException catch (e) {
-      debugPrint("PlayerException : code=${e.code} message=${e.message}");
-      _showError("Erreur just_audio : ${e.message ?? e.code}");
-    } catch (e, stack) {
-      debugPrint("Erreur inattendue lecture audio : $e");
-      debugPrint("Stack : $stack");
-      _showError("Erreur lecture : $e");
+    } catch (e) {
+      _showSnack("Erreur lecture : $e");
     }
   }
 
   Future<void> _stop() async {
     try {
-      debugPrint("Stop demandé");
       await widget.player.stop();
     } catch (e) {
-      debugPrint("Erreur stop : $e");
-      _showError("Erreur stop : $e");
+      _showSnack("Erreur stop : $e");
     }
   }
 
-  void _showError(String message) {
+  Future<void> _seekForward() async {
+    try {
+      final newPos = _position + const Duration(seconds: 10);
+      if (newPos < (_duration)) {
+        await widget.player.seek(newPos);
+      } else {
+        await widget.player.seek(_duration);
+      }
+    } catch (e) {
+      _showSnack("Erreur avance : $e");
+    }
+  }
+
+  Future<void> _seekBackward() async {
+    try {
+      final newPos = _position - const Duration(seconds: 10);
+      if (newPos > Duration.zero) {
+        await widget.player.seek(newPos);
+      } else {
+        await widget.player.seek(Duration.zero);
+      }
+    } catch (e) {
+      _showSnack("Erreur recul : $e");
+    }
+  }
+
+  void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.redAccent,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.black87,
       ),
     );
   }
@@ -120,55 +125,43 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("AudioPlayerControls build | audioPath = ${widget.audioPath ?? 'NULL'}");
-
     if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text(
-          "Aucun fichier audio disponible",
-          style: TextStyle(color: Colors.grey, fontSize: 16),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     final file = File(widget.audioPath!);
     if (!file.existsSync()) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text(
-          "Fichier audio introuvable",
-          style: TextStyle(color: Colors.red, fontSize: 16),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
-    debugPrint("Boutons audio affichés normalement (chemin valide)");
-
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Slider + temps (compact)
           Row(
             children: [
-              Text(_formatDuration(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                _formatDuration(_position),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
                     activeTrackColor: const Color(0xFF4F46E5),
                     inactiveTrackColor: Colors.grey.shade300,
                     thumbColor: const Color(0xFF4F46E5),
@@ -182,38 +175,52 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                   ),
                 ),
               ),
-              Text(_formatDuration(_duration), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                _formatDuration(_duration),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
 
+          // Boutons (plus petits)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton.filledTonal(
-                iconSize: 32,
+              // Reculer 10s
+              IconButton(
+                iconSize: 28,
+                icon: const Icon(Icons.replay_10_rounded),
+                color: Colors.grey.shade700,
+                onPressed: _seekBackward,
+              ),
+
+              const SizedBox(width: 8),
+
+              // Stop
+              IconButton(
+                iconSize: 28,
                 icon: const Icon(Icons.stop_rounded),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.grey.shade200,
-                  foregroundColor: Colors.grey.shade800,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
+                color: Colors.grey.shade700,
                 onPressed: _stop,
               ),
 
-              const SizedBox(width: 32),
+              const SizedBox(width: 8),
 
+              // Play/Pause (bouton principal)
               IconButton.filled(
-                iconSize: 56,
+                iconSize: 44,
                 icon: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
                   child: _isBuffering
                       ? const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
                         )
                       : _isPlaying
                           ? const Icon(Icons.pause_rounded, key: ValueKey('pause'))
@@ -222,9 +229,19 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                 style: IconButton.styleFrom(
                   backgroundColor: const Color(0xFF4F46E5),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: _playOrPause,
+              ),
+
+              const SizedBox(width: 8),
+
+              // Avancer 10s
+              IconButton(
+                iconSize: 28,
+                icon: const Icon(Icons.forward_10_rounded),
+                color: Colors.grey.shade700,
+                onPressed: _seekForward,
               ),
             ],
           ),
