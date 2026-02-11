@@ -15,7 +15,11 @@ class AllPartitionsScreen extends StatefulWidget {
 
 class _AllPartitionsScreenState extends State<AllPartitionsScreen> with SingleTickerProviderStateMixin {
   List<Partition> partitions = [];
+  List<Partition> displayedPartitions = []; // Liste affichée (après tri)
   bool loading = true;
+
+  // Contrôle du tri
+  String _sortOption = 'Par défaut'; // Valeur initiale
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -48,7 +52,27 @@ class _AllPartitionsScreenState extends State<AllPartitionsScreen> with SingleTi
     final all = await DBHelper.getAllPartitions();
     setState(() {
       partitions = all;
+      displayedPartitions = List.from(all); // Copie initiale
       loading = false;
+      _applySort(); // Applique le tri par défaut
+    });
+  }
+
+  // Fonction qui applique le tri selon l'option choisie
+  void _applySort() {
+    setState(() {
+      switch (_sortOption) {
+        case 'A à Z':
+          displayedPartitions.sort((a, b) => a.titre.compareTo(b.titre));
+          break;
+        case 'Z à A':
+          displayedPartitions.sort((a, b) => b.titre.compareTo(a.titre));
+          break;
+        case 'Par défaut':
+        default:
+          displayedPartitions.sort((a, b) => b.id.compareTo(a.id)); // Plus récentes en haut
+          break;
+      }
     });
   }
 
@@ -57,124 +81,158 @@ class _AllPartitionsScreenState extends State<AllPartitionsScreen> with SingleTi
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // Header IDENTIQUE à HomeContentScreen
+          // Header IDENTIQUE à HomeContentScreen (inchangé)
           SliverAppBar(
-  expandedHeight: 50, // Hauteur suffisante pour logo + animation
-  floating: false,
-  pinned: true,
-  flexibleSpace: FlexibleSpaceBar(
-    titlePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    title: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Logo avec bordure arrondie et ombre
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(
-              'assets/images/logo.png', // ← ton chemin correct
-              height: 20, // Taille élégante dans l'AppBar
-              fit: BoxFit.contain,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-
-        // Texte "E-Hira" avec police Playwrite CU
-        Text(
-          "E-Hira",
-          style: GoogleFonts.playwriteCu(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 1.0,
-            color: Colors.white,
-            height: 1.1,
-          ),
-        ),
-      ],
-    ),
-
-    // Fond dégradé indigo (s'adapte au style du logo)
-    background: Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.fromARGB(255, 0, 1, 6), // Indigo très foncé
-            Color.fromARGB(255, 0, 5, 34), // Indigo moyen
-            Color.fromARGB(255, 0, 1, 53), // Indigo plus clair
-          ],
-        ),
-      ),
-      child: Center(
-        child: SizedBox(
-          width: 140,
-          height: 140,
-          child: Lottie.asset(
-            'assets/animations/music_note.json',
-            fit: BoxFit.contain,
-            repeat: true,
-            animate: true,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.15),
-                ),
-                child: const Icon(
-                  Icons.music_note_rounded,
-                  size: 100,
-                  color: Colors.white70,
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    ),
-  ),
-),
-          // Champ de recherche (comme dans SearchScreen)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: "Rechercher titre ou catégorie...",
-                  hintStyle: const TextStyle(color: Colors.black54),
-                  prefixIcon: const Icon(Icons.search, color: Colors.black54),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
+            expandedHeight: 50,
+            floating: false,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        height: 20,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  const SizedBox(width: 12),
+                  Text(
+                    "E-Hira",
+                    style: GoogleFonts.playwriteCu(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1.0,
+                      color: Colors.white,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+              background: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color.fromARGB(255, 0, 1, 6),
+                      Color.fromARGB(255, 0, 5, 34),
+                      Color.fromARGB(255, 0, 1, 53),
+                    ],
+                  ),
                 ),
-                onChanged: (value) {
-                  // Tu peux ajouter une recherche locale ici si tu veux
-                },
+                child: Center(
+                  child: SizedBox(
+                    width: 140,
+                    height: 140,
+                    child: Lottie.asset(
+                      'assets/animations/music_note.json',
+                      fit: BoxFit.contain,
+                      repeat: true,
+                      animate: true,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.15),
+                          ),
+                          child: const Icon(
+                            Icons.music_note_rounded,
+                            size: 100,
+                            color: Colors.white70,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
+
+          // Section FILTRE / TRI par titre (remplace la recherche)
+          SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.sort_rounded, color: Colors.indigo, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _sortOption,
+                    decoration: InputDecoration(
+                      labelText: "", // ← taille diminuée
+                      labelStyle: TextStyle(
+                        color: Colors.indigo,
+                        fontSize: 14, // ← diminué de 16 à 14
+                        fontWeight: FontWeight.w500,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                    ),
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 14, // ← augmenté légèrement (les options dans le menu)
+                      fontWeight: FontWeight.w500,
+                    ),
+                    dropdownColor: const Color.fromARGB(255, 255, 255, 255),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Par défaut',
+                        child: Text('Par défaut'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'A à Z',
+                        child: Text('Titre : A à Z'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Z à A',
+                        child: Text('Titre : Z à A'),
+                      ),
+                    ],
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _sortOption = newValue;
+                          _applySort();
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
 
           // Liste des partitions
           loading
               ? const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator(color: Colors.indigo)),
                 )
-              : partitions.isEmpty
+              : displayedPartitions.isEmpty
                   ? const SliverFillRemaining(
                       child: Center(
                         child: Text(
@@ -188,14 +246,20 @@ class _AllPartitionsScreenState extends State<AllPartitionsScreen> with SingleTi
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
-                            return PartitionCard(partition: partitions[index]);
+                            return PartitionCard(partition: displayedPartitions[index]);
                           },
-                          childCount: partitions.length,
+                          childCount: displayedPartitions.length,
                         ),
                       ),
                     ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
   }
 }
