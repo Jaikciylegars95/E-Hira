@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,39 +24,54 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
+  // Subscriptions
+  StreamSubscription<PlayerState>? _stateSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration?>? _durationSubscription;
+
+  // Débounce pour slider
+  Timer? _debounceTimer;
+
+  // Protection contre clics rapides sur +10s / -10s
+  int _rapidClicks = 0;
+  Timer? _clickResetTimer;
+
   @override
   void initState() {
     super.initState();
 
-    widget.player.playerStateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = state.playing;
-          _isBuffering = state.processingState == ProcessingState.buffering;
-        });
-      }
-    });
+    _stateSubscription = widget.player.playerStateStream.listen(
+      (state) {
+        if (mounted) {
+          setState(() {
+            _isPlaying = state.playing;
+            _isBuffering = state.processingState == ProcessingState.buffering;
+          });
+        }
+      },
+      cancelOnError: true,
+    );
 
-    widget.player.positionStream.listen((pos) {
-      if (mounted) setState(() => _position = pos);
-    });
+    _positionSubscription = widget.player.positionStream.listen(
+      (pos) {
+        if (mounted) setState(() => _position = pos);
+      },
+      cancelOnError: true,
+    );
 
-    widget.player.durationStream.listen((dur) {
-      if (mounted) setState(() => _duration = dur ?? Duration.zero);
-    });
+    _durationSubscription = widget.player.durationStream.listen(
+      (dur) {
+        if (mounted) setState(() => _duration = dur ?? Duration.zero);
+      },
+      cancelOnError: true,
+    );
   }
 
   Future<void> _playOrPause() async {
-    if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      _showSnack("Aucun fichier audio disponible");
-      return;
-    }
+    if (widget.audioPath == null || widget.audioPath!.isEmpty) return;
 
     final file = File(widget.audioPath!);
-    if (!await file.exists()) {
-      _showSnack("Fichier audio introuvable");
-      return;
-    }
+    if (!await file.exists()) return;
 
     try {
       if (_isPlaying) {
@@ -67,54 +83,56 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
         }
         await widget.player.play();
       }
-    } catch (e) {
-      _showSnack("Erreur lecture : $e");
-    }
+    } catch (_) {}
   }
 
   Future<void> _stop() async {
     try {
       await widget.player.stop();
-    } catch (e) {
-      _showSnack("Erreur stop : $e");
-    }
+    } catch (_) {}
   }
 
-  Future<void> _seekForward() async {
-    try {
-      final newPos = _position + const Duration(seconds: 10);
-      if (newPos < (_duration)) {
-        await widget.player.seek(newPos);
-      } else {
-        await widget.player.seek(_duration);
-      }
-    } catch (e) {
-      _showSnack("Erreur avance : $e");
-    }
-  }
-
-  Future<void> _seekBackward() async {
-    try {
-      final newPos = _position - const Duration(seconds: 10);
-      if (newPos > Duration.zero) {
-        await widget.player.seek(newPos);
-      } else {
-        await widget.player.seek(Duration.zero);
-      }
-    } catch (e) {
-      _showSnack("Erreur recul : $e");
-    }
-  }
-
-  void _showSnack(String message) {
+  Future<void> _handleSeek(bool forward) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        backgroundColor: Colors.black87,
-      ),
-    );
+
+    // Limite : max 2 clics rapides successifs
+    _rapidClicks++;
+    if (_rapidClicks > 2) {
+      // On ignore les clics supplémentaires
+      return;
+    }
+
+    // Réinitialise le compteur après 1 seconde sans clic
+    _clickResetTimer?.cancel();
+    _clickResetTimer = Timer(const Duration(seconds: 1), () {
+      _rapidClicks = 0;
+    });
+
+    try {
+      Duration newPos;
+      if (forward) {
+        newPos = _position + const Duration(seconds: 10);
+        newPos = newPos < _duration ? newPos : _duration;
+      } else {
+        newPos = _position - const Duration(seconds: 10);
+        newPos = newPos > Duration.zero ? newPos : Duration.zero;
+      }
+
+      await widget.player.seek(newPos);
+    } catch (_) {
+      // Silence total : pas de flash rouge
+    }
+  }
+
+  void _debouncedSeek(double value) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        try {
+          widget.player.seek(Duration(milliseconds: value.toInt()));
+        } catch (_) {}
+      }
+    });
   }
 
   String _formatDuration(Duration d) {
@@ -150,7 +168,7 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Slider + temps (compact)
+          // Slider + temps
           Row(
             children: [
               Text(
@@ -169,9 +187,7 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                   child: Slider(
                     value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
                     max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
-                    onChanged: (value) {
-                      widget.player.seek(Duration(milliseconds: value.toInt()));
-                    },
+                    onChanged: _debouncedSeek,
                   ),
                 ),
               ),
@@ -184,31 +200,24 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
 
           const SizedBox(height: 4),
 
-          // Boutons (plus petits)
+          // Boutons
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Reculer 10s
               IconButton(
                 iconSize: 28,
                 icon: const Icon(Icons.replay_10_rounded),
                 color: Colors.grey.shade700,
-                onPressed: _seekBackward,
+                onPressed: () => _handleSeek(false),
               ),
-
               const SizedBox(width: 8),
-
-              // Stop
               IconButton(
                 iconSize: 28,
                 icon: const Icon(Icons.stop_rounded),
                 color: Colors.grey.shade700,
                 onPressed: _stop,
               ),
-
               const SizedBox(width: 8),
-
-              // Play/Pause (bouton principal)
               IconButton.filled(
                 iconSize: 44,
                 icon: AnimatedSwitcher(
@@ -233,20 +242,27 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                 ),
                 onPressed: _playOrPause,
               ),
-
               const SizedBox(width: 8),
-
-              // Avancer 10s
               IconButton(
                 iconSize: 28,
                 icon: const Icon(Icons.forward_10_rounded),
                 color: Colors.grey.shade700,
-                onPressed: _seekForward,
+                onPressed: () => _handleSeek(true),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _stateSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _debounceTimer?.cancel();
+    _clickResetTimer?.cancel();
+    super.dispose();
   }
 }

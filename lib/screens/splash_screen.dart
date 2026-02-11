@@ -25,8 +25,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   double _progress = 0.0;
   String _syncStatus = "Préparation...";
 
-  final String _apiUrl = "http://192.168.88.247:8000/api/partitions";
-  final String _serverBaseUrl = "http://192.168.88.247:8000/";
+  final String _apiUrl = "http://192.168.88.249:8000/api/partitions";
+  final String _serverBaseUrl = "http://192.168.88.249:8000/";
 
   // Animations emojis très discrètes
   late List<AnimationController> _emojiControllers;

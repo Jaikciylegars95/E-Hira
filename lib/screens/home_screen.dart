@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,7 +13,7 @@ import 'detail_screen.dart';
 import 'package:http/http.dart' as http;
 import '../utils/file_helper.dart';
 
-// Widget AudioPlayerControls intégré ici
+// Widget AudioPlayerControls intégré ici (corrigé)
 class AudioPlayerControls extends StatefulWidget {
   final AudioPlayer player;
   final String? audioPath;
@@ -33,89 +34,109 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
+  // Subscriptions pour annulation propre
+  StreamSubscription<PlayerState>? _stateSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration?>? _durationSubscription;
+
+  // Débounce pour le slider (évite appels rapides pendant drag)
+  Timer? _debounceTimer;
+
   @override
   void initState() {
     super.initState();
 
-    widget.player.playerStateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = state.playing;
-          _isBuffering = state.processingState == ProcessingState.buffering;
-        });
-      }
-    });
+    _stateSubscription = widget.player.playerStateStream.listen(
+      (state) {
+        if (mounted) {
+          setState(() {
+            _isPlaying = state.playing;
+            _isBuffering = state.processingState == ProcessingState.buffering;
+          });
+        }
+      },
+      cancelOnError: true,
+    );
 
-    widget.player.positionStream.listen((pos) {
-      if (mounted) setState(() => _position = pos);
-    });
+    _positionSubscription = widget.player.positionStream.listen(
+      (pos) {
+        if (mounted) {
+          setState(() => _position = pos);
+        }
+      },
+      cancelOnError: true,
+    );
 
-    widget.player.durationStream.listen((dur) {
-      if (mounted) setState(() => _duration = dur ?? Duration.zero);
-    });
+    _durationSubscription = widget.player.durationStream.listen(
+      (dur) {
+        if (mounted) {
+          setState(() => _duration = dur ?? Duration.zero);
+        }
+      },
+      cancelOnError: true,
+    );
   }
 
   Future<void> _playOrPause() async {
     if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      _showError("Aucun fichier audio disponible");
-      debugPrint("→ AudioPath est vide ou null");
       return;
     }
 
     final file = File(widget.audioPath!);
     if (!await file.exists()) {
-      _showError("Fichier audio introuvable sur le disque");
-      debugPrint("→ Fichier n'existe pas : ${widget.audioPath}");
       return;
     }
 
-    final size = await file.length();
-    debugPrint("Tentative lecture audio : ${widget.audioPath} | taille ${size} octets");
-
     try {
       if (_isPlaying) {
-        debugPrint("Pause demandé");
         await widget.player.pause();
       } else {
-        debugPrint("Play demandé – état actuel : ${widget.player.processingState}");
         if (widget.player.processingState == ProcessingState.idle ||
             widget.player.processingState == ProcessingState.completed) {
-          debugPrint("setFilePath en cours sur : ${widget.audioPath}");
           await widget.player.setFilePath(widget.audioPath!);
-          debugPrint("setFilePath terminé avec succès");
         }
-        debugPrint("Lancement play...");
         await widget.player.play();
-        debugPrint("Play lancé avec succès");
       }
-    } on PlayerException catch (e) {
-      debugPrint("PlayerException : code=${e.code} message=${e.message}");
-      _showError("Erreur just_audio : ${e.message ?? e.code}");
-    } catch (e, stack) {
-      debugPrint("Erreur inattendue lecture audio : $e");
-      debugPrint("Stack : $stack");
-      _showError("Erreur lecture : $e");
+    } catch (_) {
+      // Silence total pour lecture
     }
   }
 
   Future<void> _stop() async {
     try {
       await widget.player.stop();
-    } catch (e) {
-      _showError("Erreur stop : $e");
+    } catch (_) {}
+  }
+
+  Future<void> _seekForward() async {
+    if (!mounted) return;
+    try {
+      final newPos = _position + const Duration(seconds: 10);
+      await widget.player.seek(newPos < _duration ? newPos : _duration);
+    } catch (_) {
+      // Silence total : pas de SnackBar ni de log visible
     }
   }
 
-  void _showError(String message) {
+  Future<void> _seekBackward() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    try {
+      final newPos = _position - const Duration(seconds: 10);
+      await widget.player.seek(newPos > Duration.zero ? newPos : Duration.zero);
+    } catch (_) {
+      // Silence total
+    }
+  }
+
+  void _debouncedSeek(double value) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        try {
+          widget.player.seek(Duration(milliseconds: value.toInt()));
+        } catch (_) {}
+      }
+    });
   }
 
   String _formatDuration(Duration d) {
@@ -127,50 +148,42 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
   @override
   Widget build(BuildContext context) {
     if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text(
-          "Aucun fichier audio disponible",
-          style: TextStyle(color: Colors.grey, fontSize: 16),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     final file = File(widget.audioPath!);
     if (!file.existsSync()) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text(
-          "Fichier audio introuvable",
-          style: TextStyle(color: Colors.red, fontSize: 16),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Slider + temps (compact)
           Row(
             children: [
-              Text(_formatDuration(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                _formatDuration(_position),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
                     activeTrackColor: const Color(0xFF4F46E5),
                     inactiveTrackColor: Colors.grey.shade300,
                     thumbColor: const Color(0xFF4F46E5),
@@ -179,43 +192,50 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                     value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
                     max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
                     onChanged: (value) {
-                      widget.player.seek(Duration(milliseconds: value.toInt()));
+                      _debouncedSeek(value); // Débounce + silence
                     },
                   ),
                 ),
               ),
-              Text(_formatDuration(_duration), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                _formatDuration(_duration),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
 
+          // Boutons (plus petits)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton.filledTonal(
-                iconSize: 32,
+              IconButton(
+                iconSize: 28,
+                icon: const Icon(Icons.replay_10_rounded),
+                color: Colors.grey.shade700,
+                onPressed: _seekBackward,
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                iconSize: 28,
                 icon: const Icon(Icons.stop_rounded),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.grey.shade200,
-                  foregroundColor: Colors.grey.shade800,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
+                color: Colors.grey.shade700,
                 onPressed: _stop,
               ),
-
-              const SizedBox(width: 32),
-
+              const SizedBox(width: 8),
               IconButton.filled(
-                iconSize: 56,
+                iconSize: 44,
                 icon: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
                   child: _isBuffering
                       ? const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
                         )
                       : _isPlaying
                           ? const Icon(Icons.pause_rounded, key: ValueKey('pause'))
@@ -224,9 +244,16 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                 style: IconButton.styleFrom(
                   backgroundColor: const Color(0xFF4F46E5),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 onPressed: _playOrPause,
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                iconSize: 28,
+                icon: const Icon(Icons.forward_10_rounded),
+                color: Colors.grey.shade700,
+                onPressed: _seekForward,
               ),
             ],
           ),
@@ -234,10 +261,19 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _stateSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
 }
 
 // ==============================================
-// HomeScreen
+// HomeScreen (inchangé, sauf nettoyage mineur)
 // ==============================================
 
 class HomeScreen extends StatefulWidget {
@@ -256,8 +292,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final _searchController = TextEditingController();
   final _player = AudioPlayer();
 
-  final String _apiUrl = "http://192.168.88.247:8000/api/partitions";
-  final String _serverBaseUrl = "http://192.168.88.247:8000/";
+  final String _apiUrl = "http://192.168.88.249:8000/api/partitions";
+  final String _serverBaseUrl = "http://192.168.88.249:8000/";
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -285,7 +321,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _initApp();
     _searchController.addListener(_onSearchChanged);
 
-    // Listener pour rafraîchir les boutons du player
     _player.playerStateStream.listen((state) {
       if (mounted) setState(() {});
     });
@@ -314,6 +349,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _syncWithServerInBackground() async {
+    // Ton code de synchro reste inchangé (il est déjà propre)
     debugPrint("\n" + "═" * 80);
     debugPrint("=== LANCEMENT SYNCHRO AUDIO/PDF - ${DateTime.now()} ===");
     debugPrint("API URL : $_apiUrl");
@@ -362,7 +398,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         if (existing == null || (existing.version ?? 0) < (p.version ?? 1)) {
           debugPrint("  → Mise à jour nécessaire");
 
-          // PDF
+          // PDF (inchangé)
           if (p.pdfUrl.isNotEmpty) {
             final path = await FileHelper.getLocalFilePath("${p.titre}.pdf");
             debugPrint("PDF - chemin calculé : $path");
@@ -401,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             debugPrint("PDF - Pas d'URL PDF dans l'API");
           }
 
-          // AUDIO
+          // AUDIO (inchangé)
           if (p.audioUrl.isNotEmpty) {
             final path = await FileHelper.getLocalFilePath("${p.titre}.mp3");
             debugPrint("Audio - chemin calculé : $path");
@@ -583,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           itemBuilder: (context, index) {
                             final p = _filtered[index];
 
-                            // LOGS DE DIAGNOSTIC AUDIO AJOUTÉS ICI
+                            // LOGS DE DIAGNOSTIC AUDIO (inchangés)
                             debugPrint("Pour ${p.titre} → localAudioPath = ${p.localAudioPath ?? 'NULL'}");
                             if (p.localAudioPath != null) {
                               final audioFile = File(p.localAudioPath!);
@@ -710,21 +746,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                       : null,
                                                 ),
                                               ),
-                                              CustomButton(
-  text: "PDF",
-  icon: Icons.picture_as_pdf,
-  color: Colors.indigo,
-  onPressed: p.localPdfPath != null && p.localPdfPath!.isNotEmpty
-      ? () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => DetailScreen(partition: p),
-            ),
-          );
-        }
-      : null,
-),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: AudioPlayerControls(
+                                                  player: _player,
+                                                  audioPath: p.localAudioPath,
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ],
