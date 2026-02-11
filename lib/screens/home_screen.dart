@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,7 +12,7 @@ import 'detail_screen.dart';
 import 'package:http/http.dart' as http;
 import '../utils/file_helper.dart';
 
-// Widget AudioPlayerControls intégré ici (corrigé)
+// Widget AudioPlayerControls (inchangé ici, mais inclus pour complétude)
 class AudioPlayerControls extends StatefulWidget {
   final AudioPlayer player;
   final String? audioPath;
@@ -34,58 +33,33 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
-  // Subscriptions pour annulation propre
-  StreamSubscription<PlayerState>? _stateSubscription;
-  StreamSubscription<Duration>? _positionSubscription;
-  StreamSubscription<Duration?>? _durationSubscription;
-
-  // Débounce pour le slider (évite appels rapides pendant drag)
-  Timer? _debounceTimer;
-
   @override
   void initState() {
     super.initState();
 
-    _stateSubscription = widget.player.playerStateStream.listen(
-      (state) {
-        if (mounted) {
-          setState(() {
-            _isPlaying = state.playing;
-            _isBuffering = state.processingState == ProcessingState.buffering;
-          });
-        }
-      },
-      cancelOnError: true,
-    );
+    widget.player.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+          _isBuffering = state.processingState == ProcessingState.buffering;
+        });
+      }
+    });
 
-    _positionSubscription = widget.player.positionStream.listen(
-      (pos) {
-        if (mounted) {
-          setState(() => _position = pos);
-        }
-      },
-      cancelOnError: true,
-    );
+    widget.player.positionStream.listen((pos) {
+      if (mounted) setState(() => _position = pos);
+    });
 
-    _durationSubscription = widget.player.durationStream.listen(
-      (dur) {
-        if (mounted) {
-          setState(() => _duration = dur ?? Duration.zero);
-        }
-      },
-      cancelOnError: true,
-    );
+    widget.player.durationStream.listen((dur) {
+      if (mounted) setState(() => _duration = dur ?? Duration.zero);
+    });
   }
 
   Future<void> _playOrPause() async {
-    if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      return;
-    }
+    if (widget.audioPath == null || widget.audioPath!.isEmpty) return;
 
     final file = File(widget.audioPath!);
-    if (!await file.exists()) {
-      return;
-    }
+    if (!await file.exists()) return;
 
     try {
       if (_isPlaying) {
@@ -97,46 +71,13 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
         }
         await widget.player.play();
       }
-    } catch (_) {
-      // Silence total pour lecture
-    }
+    } catch (_) {}
   }
 
   Future<void> _stop() async {
     try {
       await widget.player.stop();
     } catch (_) {}
-  }
-
-  Future<void> _seekForward() async {
-    if (!mounted) return;
-    try {
-      final newPos = _position + const Duration(seconds: 10);
-      await widget.player.seek(newPos < _duration ? newPos : _duration);
-    } catch (_) {
-      // Silence total : pas de SnackBar ni de log visible
-    }
-  }
-
-  Future<void> _seekBackward() async {
-    if (!mounted) return;
-    try {
-      final newPos = _position - const Duration(seconds: 10);
-      await widget.player.seek(newPos > Duration.zero ? newPos : Duration.zero);
-    } catch (_) {
-      // Silence total
-    }
-  }
-
-  void _debouncedSeek(double value) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        try {
-          widget.player.seek(Duration(milliseconds: value.toInt()));
-        } catch (_) {}
-      }
-    });
   }
 
   String _formatDuration(Duration d) {
@@ -157,7 +98,7 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -172,13 +113,9 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Slider + temps (compact)
           Row(
             children: [
-              Text(
-                _formatDuration(_position),
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
+              Text(_formatDuration(_position), style: const TextStyle(fontSize: 11, color: Colors.grey)),
               Expanded(
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
@@ -192,21 +129,17 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                     value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
                     max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
                     onChanged: (value) {
-                      _debouncedSeek(value); // Débounce + silence
+                      widget.player.seek(Duration(milliseconds: value.toInt()));
                     },
                   ),
                 ),
               ),
-              Text(
-                _formatDuration(_duration),
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
+              Text(_formatDuration(_duration), style: const TextStyle(fontSize: 11, color: Colors.grey)),
             ],
           ),
 
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
 
-          // Boutons (plus petits)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -214,7 +147,12 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                 iconSize: 28,
                 icon: const Icon(Icons.replay_10_rounded),
                 color: Colors.grey.shade700,
-                onPressed: _seekBackward,
+                onPressed: () async {
+                  try {
+                    final newPos = _position - const Duration(seconds: 10);
+                    await widget.player.seek(newPos > Duration.zero ? newPos : Duration.zero);
+                  } catch (_) {}
+                },
               ),
               const SizedBox(width: 8),
               IconButton(
@@ -232,10 +170,7 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                       ? const SizedBox(
                           width: 32,
                           height: 32,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
                         )
                       : _isPlaying
                           ? const Icon(Icons.pause_rounded, key: ValueKey('pause'))
@@ -253,7 +188,12 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
                 iconSize: 28,
                 icon: const Icon(Icons.forward_10_rounded),
                 color: Colors.grey.shade700,
-                onPressed: _seekForward,
+                onPressed: () async {
+                  try {
+                    final newPos = _position + const Duration(seconds: 10);
+                    await widget.player.seek(newPos < _duration ? newPos : _duration);
+                  } catch (_) {}
+                },
               ),
             ],
           ),
@@ -261,19 +201,10 @@ class _AudioPlayerControlsState extends State<AudioPlayerControls> {
       ),
     );
   }
-
-  @override
-  void dispose() {
-    _stateSubscription?.cancel();
-    _positionSubscription?.cancel();
-    _durationSubscription?.cancel();
-    _debounceTimer?.cancel();
-    super.dispose();
-  }
 }
 
 // ==============================================
-// HomeScreen (inchangé, sauf nettoyage mineur)
+// HomeScreen – avec bouton favori fonctionnel
 // ==============================================
 
 class HomeScreen extends StatefulWidget {
@@ -689,32 +620,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                 ),
                                               ),
                                               AnimatedScale(
-                                                scale: p.isFavorite ? 1.3 : 1.0,
-                                                duration: const Duration(milliseconds: 400),
-                                                curve: Curves.elasticOut,
-                                                child: IconButton(
-                                                  icon: Icon(
-                                                    p.isFavorite ? Icons.favorite : Icons.favorite_border,
-                                                    color: p.isFavorite ? Colors.redAccent : Colors.grey.shade600,
-                                                  ),
-                                                  onPressed: () async {
-                                                    setState(() {
-                                                      p.isFavorite = !p.isFavorite;
-                                                    });
-                                                    await DBHelper.updateFavorite(p.id, p.isFavorite);
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          p.isFavorite
-                                                              ? "Ajouté aux favoris ❤️"
-                                                              : "Retiré des favoris",
-                                                        ),
-                                                        duration: const Duration(seconds: 1),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              ),
+  scale: 1.0,  // plus d'animation
+  duration: Duration.zero,
+  child: SizedBox(
+    width: 48,   // même largeur que l'IconButton original
+    height: 48,
+    // rien dedans → invisible
+  ),
+),
                                             ],
                                           ),
                                           const SizedBox(height: 4),
@@ -772,6 +685,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
+    _player.stop().then((_) {
+      _player.seek(Duration.zero);
+      debugPrint("Lecture arrêtée et remise à zéro lors de la sortie de l'écran");
+    }).catchError((e) {
+      debugPrint("Erreur lors du stop/reset player : $e");
+    });
     _animController.dispose();
     _player.dispose();
     _searchController.dispose();

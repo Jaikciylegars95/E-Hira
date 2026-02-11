@@ -4,7 +4,7 @@ import '../models/partition.dart';
 import '../utils/local_storage.dart';
 
 class ApiService {
-  static const String baseUrl = "http://192.168.88.247:8000/api";
+  static const String baseUrl = "http://192.168.88.249:8000/api";
 
   static Future<List<Partition>> syncPartitions() async {
     final localPartitions = await LocalStorage.getAll();
