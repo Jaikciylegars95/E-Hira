@@ -4,14 +4,14 @@ class Partition {
   final int id;
   final String titre;
   final String categorie;
-  final String pdfUrl;        // URL distante complète (ex: http://...)
+  final String pdfUrl;        // URL distante complète
   final String audioUrl;      // URL distante complète
   final int version;
 
-  String? localPdfPath;       // chemin local sur le téléphone
-  String? localAudioPath;     // chemin local sur le téléphone
+  String? localPdfPath;
+  String? localAudioPath;
 
-  bool isFavorite;            // vrai si en favori
+  bool isFavorite;
 
   Partition({
     required this.id,
@@ -25,20 +25,34 @@ class Partition {
     this.isFavorite = false,
   });
 
-  // Création depuis JSON API (avec baseUrl pour reconstruire les URLs complètes)
   factory Partition.fromJson(Map<String, dynamic> json, {required String baseUrl}) {
+    // Fonction qui gère correctement les URLs (évite les doubles http)
+    String formatUrl(String? rawUrl) {
+      if (rawUrl == null || rawUrl.isEmpty) return '';
+
+      // Déjà une URL complète → on la garde telle quelle
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        debugPrint("URL déjà complète depuis serveur : $rawUrl");
+        return rawUrl;
+      }
+
+      // Chemin relatif → on ajoute baseUrl
+      String cleanPath = rawUrl.startsWith('/') ? rawUrl.substring(1) : rawUrl;
+      final result = '$baseUrl$cleanPath';
+      debugPrint("URL relative → reconstruite : $result");
+      return result;
+    }
+
     return Partition(
       id: json['id'] as int? ?? 0,
       titre: json['titre'] as String? ?? '',
       categorie: json['categorie'] as String? ?? '',
-      pdfUrl: json['pdf_url'] != null ? '$baseUrl${json['pdf_url']}' : '',
-      audioUrl: json['audio_url'] != null ? '$baseUrl${json['audio_url']}' : '',
+      pdfUrl: formatUrl(json['pdf_url'] as String?),
+      audioUrl: formatUrl(json['audio_url'] as String?),
       version: json['version'] as int? ?? 1,
-      isFavorite: false, // toujours false au départ depuis l'API
     );
   }
 
-  // Pour insérer / mettre à jour dans SQLite
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -47,13 +61,12 @@ class Partition {
       'pdf_url': pdfUrl,
       'audio_url': audioUrl,
       'version': version,
-      'localPdfPath': localPdfPath,
-      'localAudioPath': localAudioPath,
-      'isFavorite': isFavorite ? 1 : 0,
+      'local_pdf_path': localPdfPath,
+      'local_audio_path': localAudioPath,
+      'is_favorite': isFavorite ? 1 : 0,
     };
   }
 
-  // Création depuis la base SQLite
   factory Partition.fromMap(Map<String, dynamic> map) {
     return Partition(
       id: map['id'] as int? ?? 0,
@@ -62,34 +75,31 @@ class Partition {
       pdfUrl: map['pdf_url'] as String? ?? '',
       audioUrl: map['audio_url'] as String? ?? '',
       version: map['version'] as int? ?? 1,
-      localPdfPath: map['localPdfPath'] as String?,
-      localAudioPath: map['localAudioPath'] as String?,
-      isFavorite: (map['isFavorite'] as int? ?? 0) == 1,
+      localPdfPath: map['local_pdf_path'] as String?,
+      localAudioPath: map['local_audio_path'] as String?,
+      isFavorite: (map['is_favorite'] as int? ?? 0) == 1,
     );
   }
 
-  // Pour envoyer au serveur (si tu as besoin d'update distant un jour)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'titre': titre,
       'categorie': categorie,
-      'pdf_url': pdfUrl.replaceAll('http://192.168.88.249:8000/', ''), // enlève la base locale si besoin
-      'audio_url': audioUrl.replaceAll('http://192.168.88.249:8000/', ''),
+      'pdf_url': pdfUrl,
+      'audio_url': audioUrl,
       'version': version,
       'is_favorite': isFavorite,
     };
   }
 
-  // Pour debug / logs clairs
   @override
   String toString() {
     return 'Partition(id: $id | titre: "$titre" | favorite: $isFavorite | '
         'pdf_url: $pdfUrl | localPdf: $localPdfPath | '
-        'audio_url: $audioUrl | localAudio: $localAudioPath | version: $version)';
+        'audio_url: $audioUrl | localAudio: $localAudioPath)';
   }
 
-  // Copie avec modification (utile pour toggle favori sans muter l'original)
   Partition copyWith({
     int? id,
     String? titre,

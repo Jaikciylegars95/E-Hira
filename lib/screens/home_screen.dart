@@ -12,201 +12,6 @@ import 'detail_screen.dart';
 import 'package:http/http.dart' as http;
 import '../utils/file_helper.dart';
 
-// Widget AudioPlayerControls (inchangé ici, mais inclus pour complétude)
-class AudioPlayerControls extends StatefulWidget {
-  final AudioPlayer player;
-  final String? audioPath;
-
-  const AudioPlayerControls({
-    super.key,
-    required this.player,
-    this.audioPath,
-  });
-
-  @override
-  State<AudioPlayerControls> createState() => _AudioPlayerControlsState();
-}
-
-class _AudioPlayerControlsState extends State<AudioPlayerControls> {
-  bool _isPlaying = false;
-  bool _isBuffering = false;
-  Duration _position = Duration.zero;
-  Duration _duration = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-
-    widget.player.playerStateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = state.playing;
-          _isBuffering = state.processingState == ProcessingState.buffering;
-        });
-      }
-    });
-
-    widget.player.positionStream.listen((pos) {
-      if (mounted) setState(() => _position = pos);
-    });
-
-    widget.player.durationStream.listen((dur) {
-      if (mounted) setState(() => _duration = dur ?? Duration.zero);
-    });
-  }
-
-  Future<void> _playOrPause() async {
-    if (widget.audioPath == null || widget.audioPath!.isEmpty) return;
-
-    final file = File(widget.audioPath!);
-    if (!await file.exists()) return;
-
-    try {
-      if (_isPlaying) {
-        await widget.player.pause();
-      } else {
-        if (widget.player.processingState == ProcessingState.idle ||
-            widget.player.processingState == ProcessingState.completed) {
-          await widget.player.setFilePath(widget.audioPath!);
-        }
-        await widget.player.play();
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _stop() async {
-    try {
-      await widget.player.stop();
-    } catch (_) {}
-  }
-
-  String _formatDuration(Duration d) {
-    final minutes = d.inMinutes.toString().padLeft(2, '0');
-    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.audioPath == null || widget.audioPath!.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final file = File(widget.audioPath!);
-    if (!file.existsSync()) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Text(_formatDuration(_position), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              Expanded(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 2,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
-                    activeTrackColor: const Color(0xFF4F46E5),
-                    inactiveTrackColor: Colors.grey.shade300,
-                    thumbColor: const Color(0xFF4F46E5),
-                  ),
-                  child: Slider(
-                    value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
-                    max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
-                    onChanged: (value) {
-                      widget.player.seek(Duration(milliseconds: value.toInt()));
-                    },
-                  ),
-                ),
-              ),
-              Text(_formatDuration(_duration), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-
-          const SizedBox(height: 6),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                iconSize: 28,
-                icon: const Icon(Icons.replay_10_rounded),
-                color: Colors.grey.shade700,
-                onPressed: () async {
-                  try {
-                    final newPos = _position - const Duration(seconds: 10);
-                    await widget.player.seek(newPos > Duration.zero ? newPos : Duration.zero);
-                  } catch (_) {}
-                },
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                iconSize: 28,
-                icon: const Icon(Icons.stop_rounded),
-                color: Colors.grey.shade700,
-                onPressed: _stop,
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                iconSize: 44,
-                icon: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _isBuffering
-                      ? const SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-                        )
-                      : _isPlaying
-                          ? const Icon(Icons.pause_rounded, key: ValueKey('pause'))
-                          : const Icon(Icons.play_arrow_rounded, key: ValueKey('play')),
-                ),
-                style: IconButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: _playOrPause,
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                iconSize: 28,
-                icon: const Icon(Icons.forward_10_rounded),
-                color: Colors.grey.shade700,
-                onPressed: () async {
-                  try {
-                    final newPos = _position + const Duration(seconds: 10);
-                    await widget.player.seek(newPos < _duration ? newPos : _duration);
-                  } catch (_) {}
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==============================================
-// HomeScreen – avec bouton favori fonctionnel
-// ==============================================
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -223,8 +28,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final _searchController = TextEditingController();
   final _player = AudioPlayer();
 
-  final String _apiUrl = "http://192.168.88.249:8000/api/partitions";
-  final String _serverBaseUrl = "http://192.168.88.249:8000/";
+  final String _apiUrl = "http://192.168.88.238:8000/api/partitions";
+  final String _serverBaseUrl = "http://192.168.88.238:8000/";
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -251,10 +56,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     _initApp();
     _searchController.addListener(_onSearchChanged);
-
-    _player.playerStateStream.listen((state) {
-      if (mounted) setState(() {});
-    });
   }
 
   Future<void> _initApp() async {
@@ -280,153 +81,62 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _syncWithServerInBackground() async {
-    // Ton code de synchro reste inchangé (il est déjà propre)
-    debugPrint("\n" + "═" * 80);
-    debugPrint("=== LANCEMENT SYNCHRO AUDIO/PDF - ${DateTime.now()} ===");
-    debugPrint("API URL : $_apiUrl");
-    debugPrint("Base URL : $_serverBaseUrl");
-
     try {
-      debugPrint("Envoi requête HTTP GET...");
-      final uri = Uri.parse(_apiUrl);
-      debugPrint("URI parsée : $uri");
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 30));
-      debugPrint("Réponse reçue ! Status : ${response.statusCode}");
-      debugPrint("Headers : ${response.headers}");
-      debugPrint("Taille body : ${response.body.length} caractères");
-
+      final response = await http.get(Uri.parse(_apiUrl));
       if (response.statusCode != 200) {
-        debugPrint("ERREUR API - Body (début) : ${response.body.substring(0, response.body.length.clamp(0, 300))}...");
+        debugPrint("Erreur sync API : ${response.statusCode}");
         return;
       }
 
-      debugPrint("Décodage JSON...");
       final List data = jsonDecode(response.body);
-      debugPrint("Nombre de partitions dans l'API : ${data.length}");
-
-      if (data.isEmpty) {
-        debugPrint("!!! AUCUNE PARTITION RENVOYÉE PAR L'API !!!");
-        return;
-      }
-
       bool hasChanges = false;
 
-      for (int i = 0; i < data.length; i++) {
-        final item = data[i];
-        debugPrint("\nPartition #${i+1} / ${data.length} - ID: ${item['id'] ?? 'inconnu'}");
-
+      for (final item in data) {
         final p = Partition.fromJson(item, baseUrl: _serverBaseUrl);
-        debugPrint("  Titre          : ${p.titre}");
-        debugPrint("  Catégorie      : ${p.categorie}");
-        debugPrint("  PDF URL        : ${p.pdfUrl}");
-        debugPrint("  Audio URL      : ${p.audioUrl}");
-        debugPrint("  Version        : ${p.version}");
 
         final existing = _partitions.firstWhereOrNull((e) => e.id == p.id);
-        debugPrint("  Existe déjà ?  : ${existing != null ? 'Oui (version ${existing.version})' : 'Non'}");
 
         if (existing == null || (existing.version ?? 0) < (p.version ?? 1)) {
-          debugPrint("  → Mise à jour nécessaire");
-
-          // PDF (inchangé)
           if (p.pdfUrl.isNotEmpty) {
             final path = await FileHelper.getLocalFilePath("${p.titre}.pdf");
-            debugPrint("PDF - chemin calculé : $path");
-
-            final file = File(path);
-
-            bool shouldDownload = true;
-
-            if (await file.exists()) {
-              final size = await file.length();
-              debugPrint("PDF - fichier existe déjà | taille : $size octets");
-              if (size > 1000) {
-                debugPrint("PDF - fichier semble valide → on garde le chemin existant");
-                p.localPdfPath = path;
-                shouldDownload = false;
-              } else {
-                debugPrint("PDF - fichier vide ou corrompu → suppression et re-téléchargement");
-                await file.delete();
-              }
-            }
-
-            if (shouldDownload) {
-              debugPrint("PDF - lancement téléchargement...");
+            if (!await File(path).exists()) {
               try {
-                final downloadedFile = await FileHelper.downloadFile(p.pdfUrl, "${p.titre}.pdf");
-                p.localPdfPath = downloadedFile.path;
-                final finalSize = await File(p.localPdfPath!).length();
-                debugPrint("PDF - téléchargement terminé | chemin : ${p.localPdfPath}");
-                debugPrint("PDF - taille finale : $finalSize octets");
-              } catch (e, stack) {
-                debugPrint("PDF - ÉCHEC TÉLÉCHARGEMENT : $e");
-                debugPrint("Stack : $stack");
+                final file = await FileHelper.downloadFile(p.pdfUrl, "${p.titre}.pdf");
+                p.localPdfPath = file.path;
+                debugPrint("PDF téléchargé : ${p.localPdfPath}");
+              } catch (e) {
+                debugPrint("Échec PDF ${p.titre} : $e");
               }
+            } else {
+              p.localPdfPath = path;
             }
-          } else {
-            debugPrint("PDF - Pas d'URL PDF dans l'API");
           }
 
-          // AUDIO (inchangé)
           if (p.audioUrl.isNotEmpty) {
             final path = await FileHelper.getLocalFilePath("${p.titre}.mp3");
-            debugPrint("Audio - chemin calculé : $path");
-
-            final file = File(path);
-
-            bool shouldDownload = true;
-
-            if (await file.exists()) {
-              final size = await file.length();
-              debugPrint("Audio - fichier existe déjà | taille : $size octets");
-              if (size > 1000) {
-                debugPrint("Audio - fichier semble valide → on garde le chemin existant");
-                p.localAudioPath = path;
-                shouldDownload = false;
-              } else {
-                debugPrint("Audio - fichier vide ou corrompu → suppression et re-téléchargement");
-                await file.delete();
-              }
-            }
-
-            if (shouldDownload) {
-              debugPrint("Audio - lancement téléchargement...");
+            if (!await File(path).exists()) {
               try {
-                final downloadedFile = await FileHelper.downloadFile(p.audioUrl, "${p.titre}.mp3");
-                p.localAudioPath = downloadedFile.path;
-                final finalSize = await File(p.localAudioPath!).length();
-                debugPrint("Audio - téléchargement terminé | chemin : ${p.localAudioPath}");
-                debugPrint("Audio - taille finale : $finalSize octets");
-              } catch (e, stack) {
-                debugPrint("Audio - ÉCHEC TÉLÉCHARGEMENT : $e");
-                debugPrint("Stack : $stack");
+                final file = await FileHelper.downloadFile(p.audioUrl, "${p.titre}.mp3");
+                p.localAudioPath = file.path;
+                debugPrint("Audio téléchargé : ${p.localAudioPath}");
+              } catch (e) {
+                debugPrint("Échec audio ${p.titre} : $e");
               }
+            } else {
+              p.localAudioPath = path;
             }
-          } else {
-            debugPrint("Audio - Pas d'URL audio dans l'API");
           }
 
-          debugPrint("  Sauvegarde en base...");
           await DBHelper.insertOrUpdatePartition(p);
-          debugPrint("  Sauvegarde OK");
           hasChanges = true;
-        } else {
-          debugPrint("  Pas de mise à jour nécessaire (version déjà à jour)");
         }
       }
 
-      if (hasChanges) {
-        debugPrint("Des changements ont été effectués → rechargement local");
+      if (hasChanges && mounted) {
         await _loadLocalPartitions();
-      } else {
-        debugPrint("Aucun changement détecté");
       }
-
-      debugPrint("=== SYNCHRO TERMINÉE AVEC SUCCÈS ===");
-    } catch (e, stack) {
-      debugPrint("ERREUR GLOBALE SYNCHRO : $e");
-      debugPrint("Stack trace : $stack");
+    } catch (e) {
+      debugPrint("Sync background erreur : $e");
     }
   }
 
@@ -440,10 +150,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
   }
 
+  Future<void> _playAudio(String path) async {
+    try {
+      await _player.stop();
+      await _player.setFilePath(path);
+      await _player.play();
+    } on PlayerException catch (e) {
+      debugPrint("Erreur just_audio : ${e.code} - ${e.message}");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Erreur lecture : ${e.message ?? 'inconnue'}"),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Erreur audio inattendue : $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Impossible de lire l'audio")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Image.asset(
           'assets/images/logo.png',
@@ -549,21 +282,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                           itemCount: _filtered.length,
                           itemBuilder: (context, index) {
                             final p = _filtered[index];
-
-                            // LOGS DE DIAGNOSTIC AUDIO (inchangés)
-                            debugPrint("Pour ${p.titre} → localAudioPath = ${p.localAudioPath ?? 'NULL'}");
-                            if (p.localAudioPath != null) {
-                              final audioFile = File(p.localAudioPath!);
-                              debugPrint("  → Existe ? ${audioFile.existsSync()}");
-                              if (audioFile.existsSync()) {
-                                debugPrint("  → Taille : ${audioFile.lengthSync()} octets");
-                              } else {
-                                debugPrint("  → Fichier audio n'existe PAS sur le disque !");
-                              }
-                            } else {
-                              debugPrint("  → localAudioPath est NULL → pas d'audio assigné");
-                            }
-
                             return FadeTransition(
                               opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
                                 CurvedAnimation(
@@ -615,26 +333,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                   style: const TextStyle(
                                                     fontSize: 18,
                                                     fontWeight: FontWeight.w600,
-                                                    color: Colors.black87,
+                                                    color: Colors.white,
                                                   ),
                                                 ),
                                               ),
                                               AnimatedScale(
-  scale: 1.0,  // plus d'animation
-  duration: Duration.zero,
-  child: SizedBox(
-    width: 48,   // même largeur que l'IconButton original
-    height: 48,
-    // rien dedans → invisible
-  ),
-),
+                                                scale: p.isFavorite ? 1.3 : 1.0,
+                                                duration: const Duration(milliseconds: 400),
+                                                curve: Curves.elasticOut,
+                                                child: IconButton(
+                                                  icon: Icon(
+                                                    p.isFavorite ? Icons.favorite : Icons.favorite_border,
+                                                    color: p.isFavorite ? Colors.redAccent : Colors.grey.shade400,
+                                                  ),
+                                                  onPressed: () async {
+                                                    setState(() {
+                                                      p.isFavorite = !p.isFavorite;
+                                                    });
+                                                    await DBHelper.updateFavorite(p.id, p.isFavorite);
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          p.isFavorite
+                                                              ? "Ajouté aux favoris ❤️"
+                                                              : "Retiré des favoris",
+                                                        ),
+                                                        duration: const Duration(seconds: 1),
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
                                             ],
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
                                             p.categorie,
                                             style: TextStyle(
-                                              color: Colors.grey.shade700,
+                                              color: Colors.grey.shade400,
                                               fontWeight: FontWeight.w400,
                                             ),
                                           ),
@@ -661,9 +397,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                               ),
                                               const SizedBox(width: 12),
                                               Expanded(
-                                                child: AudioPlayerControls(
-                                                  player: _player,
-                                                  audioPath: p.localAudioPath,
+                                                child: CustomButton(
+                                                  text: "Audio",
+                                                  icon: Icons.play_arrow,
+                                                  color: Colors.teal,
+                                                  onPressed: p.localAudioPath != null &&
+                                                          p.localAudioPath!.isNotEmpty
+                                                      ? () => _playAudio(p.localAudioPath!)
+                                                      : null,
                                                 ),
                                               ),
                                             ],
@@ -685,12 +426,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
-    _player.stop().then((_) {
-      _player.seek(Duration.zero);
-      debugPrint("Lecture arrêtée et remise à zéro lors de la sortie de l'écran");
-    }).catchError((e) {
-      debugPrint("Erreur lors du stop/reset player : $e");
-    });
     _animController.dispose();
     _player.dispose();
     _searchController.dispose();

@@ -9,7 +9,7 @@ import '../models/partition.dart';
 class DBHelper {
   static Database? _db;
   static const String dbName = 'chorale_app.db';
-  static const int dbVersion = 3; // Incrémente quand tu changes la structure
+  static const int dbVersion = 5; // ← Augmenté pour forcer la migration
 
   static Future<Database> get database async {
     if (_db != null) return _db!;
@@ -33,73 +33,97 @@ class DBHelper {
   static Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE partitions (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        titre            TEXT NOT NULL,
-        categorie        TEXT NOT NULL,
-        pdf_url          TEXT,
-        audio_url        TEXT,
-        version          INTEGER DEFAULT 1,
-        localPdfPath     TEXT,
-        localAudioPath   TEXT,
-        isFavorite       INTEGER DEFAULT 0,
-        created_at       INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        titre             TEXT NOT NULL,
+        categorie         TEXT NOT NULL,
+        pdf_url           TEXT,
+        audio_url         TEXT,
+        version           INTEGER DEFAULT 1,
+        local_pdf_path    TEXT,
+        local_audio_path  TEXT,
+        is_favorite       INTEGER DEFAULT 0,
+        created_at        INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))
       )
     ''');
+    print('Table partitions créée avec succès (version $version)');
   }
 
   static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    print('Migration de la base : v$oldVersion → v$newVersion');
+
     if (oldVersion < 2) {
-      // Migration de la v1 vers v2 (ajout des colonnes locales si elles n'existent pas)
-      await _addColumnIfNotExists(db, 'partitions', 'localPdfPath', 'TEXT');
-      await _addColumnIfNotExists(db, 'partitions', 'localAudioPath', 'TEXT');
+      await _addColumnIfNotExists(db, 'partitions', 'local_pdf_path', 'TEXT');
+      await _addColumnIfNotExists(db, 'partitions', 'local_audio_path', 'TEXT');
     }
 
     if (oldVersion < 3) {
-      // Migration de v2 vers v3 (exemple : ajout created_at si besoin)
-      await _addColumnIfNotExists(db, 'partitions', 'created_at', 'INTEGER DEFAULT (CAST(strftime(\'%s\', \'now\') AS INTEGER))');
+      await _addColumnIfNotExists(db, 'partitions', 'created_at',
+          'INTEGER DEFAULT (CAST(strftime(\'%s\', \'now\') AS INTEGER))');
     }
 
-    // Ajoute ici d'autres migrations futures quand tu incrémenteras dbVersion
+    if (oldVersion < 4) {
+      print('Migration v3 → v4 : vérification colonnes locales');
+      await _addColumnIfNotExists(db, 'partitions', 'local_pdf_path', 'TEXT');
+      await _addColumnIfNotExists(db, 'partitions', 'local_audio_path', 'TEXT');
+    }
+
+    if (oldVersion < 5) {
+      print('Migration v4 → v5 : vérification finale + nettoyage');
+      await _addColumnIfNotExists(db, 'partitions', 'local_pdf_path', 'TEXT');
+      await _addColumnIfNotExists(db, 'partitions', 'local_audio_path', 'TEXT');
+    }
   }
 
-  // Méthode utilitaire pour ajouter une colonne seulement si elle n'existe pas
+  static Future<void> _onDowngrade(Database db, int oldVersion, int newVersion) async {
+    print('Downgrade détecté : suppression et recréation complète');
+    await db.execute('DROP TABLE IF EXISTS partitions');
+    await _onCreate(db, newVersion);
+  }
+
+  /// Ajoute une colonne si elle n'existe pas (avec gestion d'erreurs)
   static Future<void> _addColumnIfNotExists(
     Database db,
     String table,
     String column,
     String type,
   ) async {
-    final result = await db.rawQuery('''
-      SELECT * FROM pragma_table_info('$table') WHERE name = '$column'
-    ''');
-    if (result.isEmpty) {
-      await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
-      print('Colonne $column ajoutée à la table $table');
+    try {
+      final result = await db.rawQuery('''
+        SELECT * FROM pragma_table_info('$table') WHERE name = '$column'
+      ''');
+      if (result.isEmpty) {
+        await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+        print('Colonne "$column" ajoutée à la table $table');
+      } else {
+        print('Colonne "$column" existe déjà dans $table');
+      }
+    } catch (e) {
+      print('Erreur lors de la vérification/ajout de $column : $e');
     }
-  }
-
-  static Future<void> _onDowngrade(Database db, int oldVersion, int newVersion) async {
-    // En cas de downgrade (rare), on peut supprimer et recréer la base
-    // (ou laisser vide si tu ne veux rien faire)
-    await db.execute('DROP TABLE IF EXISTS partitions');
-    await _onCreate(db, newVersion);
   }
 
   // Récupère toutes les partitions
   static Future<List<Partition>> getAllPartitions() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('partitions');
+    print('Partitions chargées depuis DB : ${maps.length}');
     return List.generate(maps.length, (i) => Partition.fromMap(maps[i]));
   }
 
   // Insère ou met à jour une partition (upsert)
   static Future<void> insertOrUpdatePartition(Partition partition) async {
     final db = await database;
-    await db.insert(
-      'partitions',
-      partition.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    try {
+      await db.insert(
+        'partitions',
+        partition.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      print('Partition insérée/mise à jour : ${partition.titre} (id: ${partition.id})');
+    } catch (e) {
+      print('Erreur insertion partition ${partition.titre} : $e');
+      rethrow;
+    }
   }
 
   // Met à jour uniquement le statut favori
@@ -107,31 +131,38 @@ class DBHelper {
     final db = await database;
     await db.update(
       'partitions',
-      {'isFavorite': isFavorite ? 1 : 0},
+      {'is_favorite': isFavorite ? 1 : 0},
       where: 'id = ?',
       whereArgs: [id],
     );
+    print('Favori mis à jour pour id $id → $isFavorite');
   }
 
-  // Supprime une partition (rarement utilisé)
+  // Supprime une partition
   static Future<void> delete(int id) async {
     final db = await database;
     await db.delete('partitions', where: 'id = ?', whereArgs: [id]);
   }
 
-  // Vide toute la table (pour tests ou réinitialisation volontaire)
+  // Vide toute la table (pour tests)
   static Future<void> clearAll() async {
     final db = await database;
     await db.delete('partitions');
+    print('Table partitions vidée complètement');
   }
 
-  // Pour debug : voir le schéma actuel de la table
+  // Debug : affiche le schéma actuel de la table
   static Future<void> printTableSchema() async {
     final db = await database;
     final result = await db.rawQuery("PRAGMA table_info(partitions)");
-    print("Schéma de la table partitions :");
-    for (var row in result) {
-      print(row);
+    print("=== Schéma actuel de la table partitions (version $dbVersion) ===");
+    if (result.isEmpty) {
+      print("Table partitions n'existe pas encore !");
+    } else {
+      for (var row in result) {
+        print(row);
+      }
     }
+    print("================================================================");
   }
 }

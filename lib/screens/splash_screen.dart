@@ -7,10 +7,12 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+// Imports pour la synchro réelle
 import '../database/db_helper.dart';
 import '../models/partition.dart';
 import '../utils/file_helper.dart';
 
+// Import écran principal
 import '../screens/main_navigation_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -25,10 +27,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   double _progress = 0.0;
   String _syncStatus = "Préparation...";
 
-  final String _apiUrl = "http://192.168.88.249:8000/api/partitions";
-  final String _serverBaseUrl = "http://192.168.88.249:8000/";
+  final String _apiUrl = "http://192.168.88.238:8000/api/partitions";
+  final String _serverBaseUrl = "http://192.168.88.238:8000/";
 
-  // Animations emojis très discrètes
   late List<AnimationController> _emojiControllers;
   late List<Animation<double>> _emojiFloats;
   late List<Animation<double>> _emojiFades;
@@ -62,12 +63,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     });
 
     try {
-      debugPrint("Tentative connexion API : $_apiUrl");
       final response = await http.get(Uri.parse(_apiUrl));
-      debugPrint("Réponse API : ${response.statusCode}");
-
       if (response.statusCode != 200) {
-        throw Exception("Erreur serveur : ${response.statusCode} - ${response.body}");
+        throw Exception("Erreur serveur : ${response.statusCode}");
       }
 
       setState(() => _progress = 0.3);
@@ -77,9 +75,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       int processed = 0;
 
       for (final item in data) {
-        final p = Partition.fromJson(item, baseUrl: _serverBaseUrl); // ← CORRECTION ICI
-
-        debugPrint("Partition reçue : ${p.titre} | pdf_url: ${p.pdfUrl} | audio_url: ${p.audioUrl}");
+        final p = Partition.fromJson(item, baseUrl: _serverBaseUrl);
 
         final existing = await DBHelper.getAllPartitions();
         final match = existing.firstWhere(
@@ -100,7 +96,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               }
             } else {
               p.localPdfPath = pdfPath;
-              debugPrint("PDF déjà présent : $pdfPath");
             }
           }
 
@@ -116,7 +111,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               }
             } else {
               p.localAudioPath = audioPath;
-              debugPrint("Audio déjà présent : $audioPath");
             }
           }
 
@@ -146,7 +140,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     } catch (e) {
       debugPrint("Erreur synchro complète : $e");
       setState(() {
-        _syncStatus = "Mode hors-ligne (erreur)";
+        _syncStatus = "Mode hors-ligne";
         _progress = 1.0;
       });
 
